@@ -1,0 +1,123 @@
+#!/sbin/sh
+#
+# CDDL HEADER START
+#
+# The contents of this file are subject to the terms of the
+# Common Development and Distribution License (the "License").
+# You may not use this file except in compliance with the License.
+#
+# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
+# or http://www.opensolaris.org/os/licensing.
+# See the License for the specific language governing permissions
+# and limitations under the License.
+#
+# When distributing Covered Code, include this CDDL HEADER in each
+# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
+# If applicable, add the following below this CDDL HEADER, with the
+# fields enclosed by brackets "[]" replaced with your own identifying
+# information: Portions Copyright [yyyy] [name of copyright owner]
+#
+# CDDL HEADER END
+#
+#
+# Copyright 2016 Nexenta Systems, Inc. All rights reserved.
+#
+
+#
+# Name service switch script.
+#
+
+. /lib/svc/share/smf_include.sh
+. /lib/svc/share/net_include.sh
+
+NAMESWITCH_FMRI="svc:/system/name-service-switch"
+DEFAULT_NAMESERVICES_CONFIG_FILE="/etc/nsswitch.dns"
+NAMESERVICES_CONFIG_FILE="/etc/nsswitch.conf"
+CHMOD=/usr/bin/chmod
+CP=/usr/bin/cp
+CUT=/usr/bin/cut
+GREP=/usr/bin/grep
+NAWK=/usr/bin/nawk
+SED=/usr/bin/sed
+SVCCFG=/usr/sbin/svccfg
+TR=/usr/bin/tr
+
+unconfigure()
+{
+
+	entries=$($GREP ^[a-z]*: $DEFAULT_NAMESERVICES_CONFIG_FILE | $CUT -d: -f1)
+	for e in $entries; do
+		name=`$GREP ^$e: $DEFAULT_NAMESERVICES_CONFIG_FILE`
+		name=${name##*:}
+		$SVCCFG -s $NAMESWITCH_FMRI setprop config/$e = astring: \"$name\"
+	done
+
+	$CP -f $DEFAULT_NAMESERVICES_CONFIG_FILE $NAMESERVICES_CONFIG_FILE 
+	if [ $? -ne 0 ]; then
+		err=$?
+		msg="Error copying $DEFAULT_NAMESERVICES_CONFIG_FILE to $NAMESERVICES_CONFIG_FILE"
+		net_record_err "$msg" $err
+		return $SMF_EXIT_ERR_FATAL
+	fi
+
+	$CHMOD 644 $NAMESERVICES_CONFIG_FILE 
+	if [ $? -ne 0 ]; then
+		err=$?
+		msg="Error setting permissions on $NAMESERVICES_CONFIG_FILE"
+		net_record_err "$msg" $err
+		return $SMF_EXIT_ERR_FATAL
+	fi
+
+	return $SMF_EXIT_OK
+}
+
+case "$1" in
+'start'|'refresh')
+	defval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/default | \
+		$NAWK '{ print $3 }')
+	if [[ "$defval" == "true" ]]; then
+		msg="Setting $NAMESERVICES_CONFIG_FILE to default values"	
+		net_record_err "$msg" 0
+		unconfigure
+		if [ $? -ne 0 ]; then
+			exit $SMF_EXIT_ERR_CONFIG 
+		fi	
+		exit $SMF_EXIT_OK	
+	fi
+
+	entries=$($GREP ^[a-z]*: $NAMESERVICES_CONFIG_FILE | $CUT -d: -f1)
+
+	for e in $entries; do
+	 	propval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/$e | \
+			$NAWK '{ for (i = 3; i <= NF; i++) printf $i" " }' | $TR -d \")
+
+		# Setting default values if SMF value is absent	
+		if [[ -z "$propval" ]]; then
+			propval="files"
+			if [[ "$e" == "ipnodes" ]] || [[ "$e" == "hosts" ]]; then
+				propval="files dns mdns"
+			elif [[ "$e" == "printers" ]]; then
+				propval="user files"
+			fi	
+		fi	
+
+		$SED -i -e "s/^\($e:\s*\)\(.*\)/\1 $propval/g" $NAMESERVICES_CONFIG_FILE
+		if [ $? -ne 0 ]; then
+			err=$?
+			msg="Error setting \"$e\" entry"
+			net_record_err "$msg" $err
+			exit $SMF_EXIT_ERR_CONFIG 
+		fi
+	done
+
+	exit $SMF_EXIT_OK
+	;; 
+'unconfigure')
+	unconfigure
+	;;
+*)
+	echo "Usage: $0 { start | stop | refresh | unconfigure }"
+	exit 1
+	;;
+esac
+exit $SMF_EXIT_OK
