@@ -1,4 +1,4 @@
-# name-services-switch
+# name-service-switch
 Simple name-service-switch SMF service for illumos
 
 Usage: 
