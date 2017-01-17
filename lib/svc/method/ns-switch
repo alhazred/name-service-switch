@@ -1,23 +1,14 @@
 #!/sbin/sh
 #
-# CDDL HEADER START
 #
-# The contents of this file are subject to the terms of the
-# Common Development and Distribution License (the "License").
-# You may not use this file except in compliance with the License.
+# This file and its contents are supplied under the terms of the
+# Common Development and Distribution License ("CDDL"), version 1.0.
+# You may only use this file in accordance with the terms of version
+# 1.0 of the CDDL.
 #
-# You can obtain a copy of the license at usr/src/OPENSOLARIS.LICENSE
-# or http://www.opensolaris.org/os/licensing.
-# See the License for the specific language governing permissions
-# and limitations under the License.
-#
-# When distributing Covered Code, include this CDDL HEADER in each
-# file and include the License file at usr/src/OPENSOLARIS.LICENSE.
-# If applicable, add the following below this CDDL HEADER, with the
-# fields enclosed by brackets "[]" replaced with your own identifying
-# information: Portions Copyright [yyyy] [name of copyright owner]
-#
-# CDDL HEADER END
+# A full copy of the text of the CDDL should have accompanied this
+# source.  A copy of the CDDL is also available via the Internet at
+# http://www.illumos.org/license/CDDL.
 #
 #
 # Copyright 2017 Nexenta Systems, Inc. All rights reserved.
@@ -30,9 +21,9 @@
 . /lib/svc/share/smf_include.sh
 . /lib/svc/share/net_include.sh
 
-NAMESWITCH_FMRI="svc:/system/name-service-switch"
-DEFAULT_NAMESERVICES_CONFIG_FILE="/etc/nsswitch.dns"
-NAMESERVICES_CONFIG_FILE="/etc/nsswitch.conf"
+NSS_FMRI="svc:/system/name-service-switch"
+DEFAULT_NSS_CONFIG="/etc/nsswitch.dns"
+NSS_CONFIG="/etc/nsswitch.conf"
 CHMOD=/usr/bin/chmod
 CP=/usr/bin/cp
 GREP=/usr/bin/grep
@@ -43,25 +34,25 @@ SVCCFG=/usr/sbin/svccfg
 unconfigure()
 {
 
-	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NAMESERVICES_CONFIG_FILE)
+	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NSS_CONFIG)
 	for e in $entries; do
-		name=`$GREP ^$e: $DEFAULT_NAMESERVICES_CONFIG_FILE`
+		name=`$GREP ^$e: $DEFAULT_NSS_CONFIG`
 		name=${name##*:}
-		$SVCCFG -s $NAMESWITCH_FMRI setprop config/$e = astring: \"$name\"
+		$SVCCFG -s $NSS_FMRI setprop config/$e = astring: \"$name\"
 	done
 
-	$CP -f $DEFAULT_NAMESERVICES_CONFIG_FILE $NAMESERVICES_CONFIG_FILE 
+	$CP -f $DEFAULT_NSS_CONFIG $NSS_CONFIG
 	if [ $? -ne 0 ]; then
 		err=$?
-		msg="Error copying $DEFAULT_NAMESERVICES_CONFIG_FILE to $NAMESERVICES_CONFIG_FILE"
+		msg="Error copying $DEFAULT_NSS_CONFIG to $NSS_CONFIG"
 		net_record_err "$msg" $err
 		return $SMF_EXIT_ERR_FATAL
 	fi
 
-	$CHMOD 644 $NAMESERVICES_CONFIG_FILE 
+	$CHMOD 644 $NSS_CONFIG
 	if [ $? -ne 0 ]; then
 		err=$?
-		msg="Error setting permissions on $NAMESERVICES_CONFIG_FILE"
+		msg="Error setting permissions on $NSS_CONFIG"
 		net_record_err "$msg" $err
 		return $SMF_EXIT_ERR_FATAL
 	fi
@@ -72,10 +63,10 @@ unconfigure()
 case "$1" in
 'start'|'refresh')
 
-	defval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/default | \
+	defval=$($SVCCFG -s $NSS_FMRI listprop config/default | \
 		$NAWK '{ print $3 }')
 	if [[ "$defval" == "true" ]]; then
-		msg="Setting $NAMESERVICES_CONFIG_FILE to default values"	
+		msg="Setting $NSS_CONFIG to default values"
 		net_record_err "$msg" 0
 		unconfigure
 		if [ $? -ne 0 ]; then
@@ -84,9 +75,9 @@ case "$1" in
 		exit $SMF_EXIT_OK	
 	fi
 
-	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NAMESERVICES_CONFIG_FILE)
+	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NSS_CONFIG)
 	for e in $entries; do
-		propval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/$e | \
+		propval=$($SVCCFG -s $NSS_FMRI listprop config/$e | \
 			$NAWK -F\" '{ print $2 }')
 
 		# Setting default values if SMF value is absent	
@@ -99,7 +90,7 @@ case "$1" in
 			fi	
 		fi	
 
-		$SED -i -e "s/^\($e:\s*\)\(.*\)/\1 $propval/g" $NAMESERVICES_CONFIG_FILE
+		$SED -i -e "s/^\($e:\s*\)\(.*\)/\1 $propval/g" $NSS_CONFIG
 		if [ $? -ne 0 ]; then
 			err=$?
 			msg="Error setting \"$e\" entry"
