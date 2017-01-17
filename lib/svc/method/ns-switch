@@ -20,7 +20,7 @@
 # CDDL HEADER END
 #
 #
-# Copyright 2016 Nexenta Systems, Inc. All rights reserved.
+# Copyright 2017 Nexenta Systems, Inc. All rights reserved.
 #
 
 #
@@ -35,17 +35,15 @@ DEFAULT_NAMESERVICES_CONFIG_FILE="/etc/nsswitch.dns"
 NAMESERVICES_CONFIG_FILE="/etc/nsswitch.conf"
 CHMOD=/usr/bin/chmod
 CP=/usr/bin/cp
-CUT=/usr/bin/cut
 GREP=/usr/bin/grep
 NAWK=/usr/bin/nawk
 SED=/usr/bin/sed
 SVCCFG=/usr/sbin/svccfg
-TR=/usr/bin/tr
 
 unconfigure()
 {
 
-	entries=$($GREP ^[a-z]*: $DEFAULT_NAMESERVICES_CONFIG_FILE | $CUT -d: -f1)
+	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NAMESERVICES_CONFIG_FILE)
 	for e in $entries; do
 		name=`$GREP ^$e: $DEFAULT_NAMESERVICES_CONFIG_FILE`
 		name=${name##*:}
@@ -73,6 +71,7 @@ unconfigure()
 
 case "$1" in
 'start'|'refresh')
+
 	defval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/default | \
 		$NAWK '{ print $3 }')
 	if [[ "$defval" == "true" ]]; then
@@ -85,11 +84,10 @@ case "$1" in
 		exit $SMF_EXIT_OK	
 	fi
 
-	entries=$($GREP ^[a-z]*: $NAMESERVICES_CONFIG_FILE | $CUT -d: -f1)
-
+	entries=$($NAWK -F: '/^[a-z]*:/ { print $1 }' $DEFAULT_NAMESERVICES_CONFIG_FILE)
 	for e in $entries; do
-	 	propval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/$e | \
-			$NAWK '{ for (i = 3; i <= NF; i++) printf $i" " }' | $TR -d \")
+		propval=$($SVCCFG -s $NAMESWITCH_FMRI listprop config/$e | \
+			$NAWK -F\" '{ print $2 }')
 
 		# Setting default values if SMF value is absent	
 		if [[ -z "$propval" ]]; then
@@ -106,7 +104,7 @@ case "$1" in
 			err=$?
 			msg="Error setting \"$e\" entry"
 			net_record_err "$msg" $err
-			exit $SMF_EXIT_ERR_CONFIG 
+			exit $SMF_EXIT_ERR_CONFIG
 		fi
 	done
 
